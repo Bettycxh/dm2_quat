@@ -3,17 +3,18 @@ import colorsys
 
 import numpy as np
 import open3d as o3d
+import torch
 
 from tqdm import tqdm
 import sys
 sys.path.append("../")
-from utils import plot_global_pose
+from utils import plot_global_pose, euler_pose_to_quaternion, quaternion_to_euler_pose
 
 
-data_dir = "../data/KITTI"
-traj = "2011_09_30_drive_0018_sync_tfvpr"
+data_dir = "../data/KITTI/0018/"
+traj = "pcd/"
 dataset_dir = os.path.join(data_dir, traj)
-checkpoint_dir = '../results/KITTI/gt_vis'
+checkpoint_dir = '../results/KITTI/KITTI_0018/gt_vis/'
 voxel_size = 5
 pcd_files = sorted(os.listdir(os.path.join(data_dir, traj)))
 while pcd_files[-1][-3:] != "pcd":
@@ -24,6 +25,11 @@ while pcd_files[-1][-3:] != "pcd":
 # dataset = Kitti(data_dir, traj, voxel_size)
 gt_pose = np.load(os.path.join(data_dir, traj, "gt_pose.npy"))
 gt_pose = gt_pose
+
+q = torch.from_numpy(gt_pose).cuda()
+q = euler_pose_to_quaternion(q)
+gt_pose = q.cpu().numpy()
+
 radius = 6378137 # earth radius
 gt_pose[:, :2] *= np.pi / 180
 lat_0 = gt_pose[0, 0]
@@ -34,7 +40,7 @@ gt_pose[:, 0] -= gt_pose[0, 0]
 gt_pose[:, [0, 1]] = gt_pose[:, [1, 0]]
 # pcd_files = pcd_files[:500]
 # gt_pose = gt_pose[:1000]
-np.save(os.path.join(checkpoint_dir, "gt_pose.npy"), gt_pose)
+np.save(os.path.join(checkpoint_dir,"gt_pose.npy"), gt_pose)
 
 # color in visulization
 colors = []
@@ -56,7 +62,8 @@ for i in tqdm(range(gt_pose.shape[0])):
     # pcd.rotate(rotation)
     # pcd.translate(gt_pose[i, :3], relative=False)
     T = np.eye(4)
-    T[:3, :3] = o3d.geometry.get_rotation_matrix_from_xyz(gt_pose[i, 3:])
+    # T[:3, :3] = o3d.geometry.get_rotation_matrix_from_xyz(gt_pose[i, 3:])
+    T[:3, :3] = o3d.geometry.get_rotation_matrix_from_quaternion(gt_pose[i, 3:])
     T[:3, 3] = gt_pose[i, :3]
     pcd.transform(T)
     # pcd.paint_uniform_color(color_palette[i].T)

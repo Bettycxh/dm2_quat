@@ -1,4 +1,4 @@
-name: dm2
+name: dm2_v1
 channels:
   - conda-forge
   - defaults

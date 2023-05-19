@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import torch
 import numpy as np
 from matplotlib import cm, colors, rc
-
+from .pytorch3d_utils import *
 
 def plot_global_point_cloud(point_cloud, pose, valid_points, save_dir, **kwargs):
     if torch.is_tensor(point_cloud):
@@ -55,6 +55,12 @@ def plot_global_pose(checkpoint_dir, dataset="kitti", epoch=None, mode=None):
         location = np.load(os.path.join(checkpoint_dir, "gt_pose.npy"))
     else:
         location = np.load(os.path.join(checkpoint_dir, "pose_ests", str(epoch)+".npy"))
+    
+    if(location.shape[1] == 7):
+        location_quaternion = torch.tensor(location[:, 3:7], dtype=torch.float)  # Convert the NumPy array to a PyTorch tensor
+        rotation_matrix = quaternion_to_matrix(location_quaternion)
+        location_euler = matrix_to_euler_angles(rotation_matrix)
+        location = np.hstack((location[:, :3], location_euler.numpy()))  # Convert the tensor back to a NumPy array
     t = np.arange(location.shape[0]) / location.shape[0]
     # location[:, 0] = location[:, 0] - np.mean(location[:, 0])
     # location[:, 1] = location[:, 1] - np.mean(location[:, 1])

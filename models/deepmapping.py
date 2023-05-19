@@ -4,7 +4,7 @@
 import torch
 import torch.nn as nn
 from .networks import LocNetRegKITTI, MLP
-from utils import transform_to_global_KITTI, compose_pose_diff
+from utils import transform_to_global_KITTI, compose_pose_diff, euler_pose_to_quaternion,quaternion_to_euler_pose
 
 def get_M_net_inputs_labels(occupied_points, unoccupited_points):
     """
@@ -49,7 +49,7 @@ class DeepMapping2(nn.Module):
         self.n_samples = n_samples
         self.loss_fn = loss_fn
         self.n_points = n_points
-        self.loc_net = LocNetRegKITTI(n_points=n_points, out_dims=6) # <x,y,z,theta>
+        self.loc_net = LocNetRegKITTI(n_points=n_points, out_dims=7) # <x,y,z,theta>
         self.occup_net = MLP(dim)
         self.alpha = alpha
         self.beta = beta
@@ -58,8 +58,11 @@ class DeepMapping2(nn.Module):
         # obs_local: <BxGxNx3> 
         G = obs_local.shape[0]
         self.obs_local = obs_local
+        
+        sensor_pose = euler_pose_to_quaternion(sensor_pose)
+        
         self.obs_initial = transform_to_global_KITTI(
-            sensor_pose, self.obs_local)
+            sensor_pose, self.obs_local,rotation_representation="quaternion")
         self.l_net_out = self.loc_net(self.obs_initial)
         # l_net_out[:, -1] = 0
         self.pose_est = self.l_net_out + sensor_pose
@@ -67,10 +70,11 @@ class DeepMapping2(nn.Module):
         # self.bs = obs_local.shape[0]
         # self.obs_local = self.obs_local.reshape(self.bs,-1,3)
         self.obs_global_est = transform_to_global_KITTI(
-            self.pose_est, self.obs_local)
+            self.pose_est, self.obs_local,rotation_representation="quaternion")
 
         if self.training:
             self.valid_points = valid_points
+            pairwise_pose = euler_pose_to_quaternion(pairwise_pose)
             if self.loss_fn.__name__ == "pose":
                 self.t_src, self.t_dst, self.r_src, self.r_dst = compose_pose_diff(self.pose_est, pairwise_pose)
             else:
@@ -78,12 +82,13 @@ class DeepMapping2(nn.Module):
                 relative_centroid_local = self.obs_local[:1, :, :].expand(G-1, -1, -1)
                 self.relative_centroid = transform_to_global_KITTI(
                     self.pose_est[1:, :], 
-                    transform_to_global_KITTI(pairwise_pose, relative_centroid_local)
+                    transform_to_global_KITTI(pairwise_pose, relative_centroid_local,rotation_representation="quaternion"),
+                    rotation_representation="quaternion"
                 )
             self.unoccupied_local = sample_unoccupied_point(
                 self.obs_local, self.n_samples)
             self.unoccupied_global = transform_to_global_KITTI(
-                self.pose_est, self.unoccupied_local)
+                self.pose_est, self.unoccupied_local,rotation_representation="quaternion")
 
             inputs, self.gt = get_M_net_inputs_labels(
                 self.obs_global_est, self.unoccupied_global)
